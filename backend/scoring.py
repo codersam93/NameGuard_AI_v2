@@ -244,7 +244,7 @@ def _load_data():
         DATA.existing_companies.append(IndexedTerm(n, key, {}))
         DATA.existing_company_keys.add(key)
 
-    # 4. Historical Decisions
+    # 4. Historical Decisions (with frequency tracking)
     path = DATA_DIR / "historical_name_decisions.xlsx"
     if path.exists():
         try:
@@ -264,7 +264,8 @@ def _load_data():
                     metadata={
                         "decision_dt": row.get("decision_dt"),
                         "decision": decision,
-                        "score_at_time": row.get("score_at_time")
+                        "score_at_time": row.get("score_at_time"),
+                        "frequency": 1  # Each occurrence counts as 1
                     }
                 ))
                 
@@ -274,6 +275,48 @@ def _load_data():
                     DATA.existing_company_keys.add(key)
                     
         except Exception: pass
+    
+    # 5. Obscene Words (NEW)
+    path = DATA_DIR / "obscene_words.xlsx"
+    if path.exists():
+        try:
+            df = pd.read_excel(path)
+            for _, row in df.iterrows():
+                w = str(row.get("word", "")).strip().lower()
+                if not w: continue
+                lang = str(row.get("language", "")).strip().lower() or "unknown"
+                try: severity = float(row.get("severity", 1))
+                except: severity = 1.0
+                severity = max(0.0, min(1.0, severity))
+                
+                DATA.obscene_words.append(IndexedTerm(
+                    term=w,
+                    key=simple_phonetic_key(w),
+                    metadata={"lang": lang, "severity": severity}
+                ))
+        except Exception as e:
+            print(f"Error loading obscene_words.xlsx: {e}")
+    
+    # 6. Political Names (NEW)
+    path = DATA_DIR / "political_names.xlsx"
+    if path.exists():
+        try:
+            df = pd.read_excel(path)
+            for _, row in df.iterrows():
+                name = str(row.get("name", "")).strip()
+                if not name: continue
+                name_type = str(row.get("type", "")).strip().lower() or "unknown"
+                try: severity = float(row.get("severity", 1))
+                except: severity = 1.0
+                severity = max(0.0, min(1.0, severity))
+                
+                DATA.political_names.append(IndexedTerm(
+                    term=name,
+                    key=simple_phonetic_key(name),
+                    metadata={"type": name_type, "severity": severity}
+                ))
+        except Exception as e:
+            print(f"Error loading political_names.xlsx: {e}")
 
 # Load data on module import
 _load_data()
