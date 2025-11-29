@@ -383,19 +383,21 @@ def check_phonetic_match_any_token_optimized(name: str, candidates: List[Indexed
 # ---------------------------
 
 
-def historical_acceptance_from_phonetics(name: str) -> Optional[float]:
+def historical_acceptance_from_phonetics(name: str) -> Optional[Tuple[float, Dict]]:
     """
     Calculates the likelihood of acceptance based on historical decisions.
     
-    Logic:
+    Enhanced Logic:
     - Finds all phonetic matches in historical data.
     - Calculates a weighted average of outcomes (Accepted=1.0, Rejected=0.0).
-    - Weights are determined by Recency.
-    - Frequency is inherently handled by summing up all matching occurrences.
-      (e.g., 5 rejections contribute 5x the weight of 1 rejection, adjusted for recency).
+    - Weights are determined by BOTH Frequency and Recency.
+    - More frequent occurrences get higher weight.
+    - More recent decisions get higher weight.
     
     Returns:
-        Float between 0.0 and 1.0 representing historical approval rate.
+        Tuple of (probability, metadata_dict) where:
+        - probability: Float between 0.0 and 1.0 representing historical approval rate
+        - metadata: Dict with frequency_count, avg_age_years, etc.
         None if no history found.
     """
     if not DATA.historical_decisions:
@@ -410,7 +412,10 @@ def historical_acceptance_from_phonetics(name: str) -> Optional[float]:
     now = datetime.now(timezone.utc)
     numer = 0.0
     denom = 0.0
-
+    
+    # Track frequency by grouping similar decisions
+    decision_groups = {}  # key: (decision, normalized_name) -> count
+    
     for item in matches:
         dt_val = item.metadata.get("decision_dt")
         if dt_val is None or pd.isna(dt_val):
@@ -421,11 +426,12 @@ def historical_acceptance_from_phonetics(name: str) -> Optional[float]:
         age_days = max(0.0, (now - dt_val).total_seconds() / 86400.0)
         age_years = age_days / 365.25
         
-        # Decay function: 1 / (1 + age_years)
+        # Enhanced decay function with slower decay
         # 0 years -> 1.0
-        # 1 year -> 0.5
-        # 2 years -> 0.33
-        w_recency = 1.0 / (1.0 + age_years)
+        # 1 year -> 0.67
+        # 2 years -> 0.5
+        # 5 years -> 0.29
+        w_recency = 1.0 / (1.0 + 0.5 * age_years)
 
         decision_str = item.metadata.get("decision")
         score_at_time = item.metadata.get("score_at_time")
@@ -434,16 +440,42 @@ def historical_acceptance_from_phonetics(name: str) -> Optional[float]:
             outcome = float(score_at_time)
         else:
             outcome = 1.0 if decision_str == "accepted" else 0.0
+        
+        # Track frequency for same decision type
+        group_key = (decision_str, item.term.lower())
+        decision_groups[group_key] = decision_groups.get(group_key, 0) + 1
+        
+        # Frequency weight: logarithmic scale to avoid over-weighting
+        # 1 occurrence -> 1.0
+        # 2 occurrences -> 1.3
+        # 5 occurrences -> 1.7
+        # 10 occurrences -> 2.0
+        freq_count = decision_groups[group_key]
+        w_frequency = 1.0 + math.log10(freq_count)
+        
+        # Combined weight: Frequency × Recency
+        combined_weight = w_frequency * w_recency
 
         # Accumulate weighted outcome
-        # Frequency is handled here: each occurrence adds to the sum
-        numer += w_recency * outcome
-        denom += w_recency
+        numer += combined_weight * outcome
+        denom += combined_weight
 
     if denom == 0.0:
         return None
 
-    return numer / denom
+    probability = numer / denom
+    
+    # Calculate metadata
+    total_matches = len(matches)
+    total_frequency = sum(decision_groups.values())
+    
+    metadata = {
+        "match_count": total_matches,
+        "total_frequency": total_frequency,
+        "unique_names": len(decision_groups),
+    }
+    
+    return probability, metadata
 
 
 # ---------------------------
