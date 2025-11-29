@@ -496,7 +496,7 @@ def compute_hard_rule_flags(name: str) -> List[RuleFlag]:
                 severity=item.metadata["severity"]
             ))
 
-    # 2) Offensive / abusive words
+    # 2) Offensive / abusive words (OLD LIST)
     tokens = re.findall(r"[a-zA-Z]+", lowered)
     offensive_dict = {item.term: item for item in DATA.offensive_words}
     
@@ -509,7 +509,52 @@ def compute_hard_rule_flags(name: str) -> List[RuleFlag]:
                 severity=item.metadata["severity"]
             ))
 
-    # 3) Phonetic match against offensive words
+    # 3) NEW: Obscene words (EXACT MATCH)
+    obscene_dict = {item.term: item for item in DATA.obscene_words}
+    for token in tokens:
+        if token in obscene_dict:
+            item = obscene_dict[token]
+            flags.append(RuleFlag(
+                code="obscene_word_detected",
+                description=f"Contains obscene word '{token}' ({item.metadata['lang']}). Automatic rejection.",
+                severity=1.0
+            ))
+    
+    # 4) NEW: Obscene words (PHONETIC MATCH)
+    has_obscene_flag = any(f.code == "obscene_word_detected" for f in flags)
+    if not has_obscene_flag:
+        matches = check_phonetic_match_any_token_optimized(name, DATA.obscene_words, threshold=0.3)
+        for item in matches:
+            flags.append(RuleFlag(
+                code="obscene_word_detected",
+                description=f"Contains word phonetically similar to obscene term '{item.term}' ({item.metadata['lang']}). Automatic rejection.",
+                severity=1.0
+            ))
+            break
+
+    # 5) NEW: Political leaders/parties (EXACT MATCH)
+    name_lower = normalize_name(name)
+    for item in DATA.political_names:
+        if item.term.lower() in name_lower:
+            flags.append(RuleFlag(
+                code="political_reference_detected",
+                description=f"Contains political {item.metadata['type']} name '{item.term}'. Requires special approval.",
+                severity=item.metadata["severity"]
+            ))
+    
+    # 6) NEW: Political leaders/parties (PHONETIC MATCH)
+    has_political_flag = any(f.code == "political_reference_detected" for f in flags)
+    if not has_political_flag:
+        matches = check_phonetic_match_any_token_optimized(name, DATA.political_names, threshold=0.3)
+        for item in matches:
+            flags.append(RuleFlag(
+                code="political_reference_detected",
+                description=f"Contains word phonetically similar to political {item.metadata['type']} '{item.term}'.",
+                severity=max(item.metadata["severity"], 0.9)
+            ))
+            break
+
+    # 7) Phonetic match against offensive words (OLD LOGIC)
     has_offensive_flag = any(f.code == "obscene_or_offensive" for f in flags)
     if not has_offensive_flag:
         matches = check_phonetic_match_any_token_optimized(name, DATA.offensive_words)
@@ -521,7 +566,7 @@ def compute_hard_rule_flags(name: str) -> List[RuleFlag]:
             ))
             break 
 
-    # 4) Phonetic match against prohibited terms
+    # 8) Phonetic match against prohibited terms
     has_prohibited_flag = any(f.code == "prohibited_or_reserved_term" for f in flags)
     if not has_prohibited_flag:
         matches = check_phonetic_match_any_token_optimized(name, DATA.prohibited_terms)
@@ -533,7 +578,7 @@ def compute_hard_rule_flags(name: str) -> List[RuleFlag]:
             ))
             break
 
-    # 5) Near-identical to existing companies
+    # 9) Near-identical to existing companies
     matches = check_phonetic_match_optimized(name, DATA.existing_companies)
     for item in matches:
         flags.append(RuleFlag(
@@ -543,7 +588,7 @@ def compute_hard_rule_flags(name: str) -> List[RuleFlag]:
         ))
         break
 
-    # 6) Political leader initials
+    # 10) Political leader initials
     for token in tokens:
         compact = token.replace(".", "").lower()
         if compact in {i.replace(" ", "") for i in LEADER_INITIALS}:
@@ -554,7 +599,7 @@ def compute_hard_rule_flags(name: str) -> List[RuleFlag]:
             ))
             break
 
-    # 7) Phonetic similarity to PM name
+    # 11) Phonetic similarity to PM name
     for token in tokens:
         if token.lower() in {"name", "company", "enterprises", "solutions", "services"}:
             continue
