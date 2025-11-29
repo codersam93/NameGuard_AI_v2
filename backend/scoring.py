@@ -109,13 +109,36 @@ def similarity(a: str, b: str) -> float:
 def phonetic_match(a: str, b: str) -> bool:
     """Return True if `a` and `b` are considered a phonetic match.
 
-    Uses indian-namematch.fuzzymatch.single_compare under the hood.
+    Uses BOTH indian-namematch and phonetics library for comprehensive matching.
     """
+    # Method 1: indian-namematch
     try:
         result = fuzzymatch.single_compare(str(a), str(b))
-        return isinstance(result, str) and result.lower().startswith("match")
+        if isinstance(result, str) and result.lower().startswith("match"):
+            return True
     except Exception:
-        return False
+        pass
+    
+    # Method 2: phonetics library (Soundex, Metaphone, NYSIIS)
+    try:
+        # Soundex matching
+        if phonetics.soundex(str(a)) == phonetics.soundex(str(b)):
+            return True
+        
+        # Metaphone matching
+        if phonetics.metaphone(str(a)) == phonetics.metaphone(str(b)):
+            return True
+        
+        # Double Metaphone matching
+        a_dm = phonetics.dmetaphone(str(a))
+        b_dm = phonetics.dmetaphone(str(b))
+        if a_dm[0] == b_dm[0] or (a_dm[1] and a_dm[1] == b_dm[1]):
+            return True
+            
+    except Exception:
+        pass
+    
+    return False
 
 
 # ---------------------------
