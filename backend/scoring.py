@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List, Set, Tuple, Optional, NamedTuple
 
 import pandas as pd
 from indian_namematch import fuzzymatch
+import phonetics
 
 try:
     from backend.models import NameEvaluationInput, NameEvaluationResult, DecisionLabel, RuleFlag
