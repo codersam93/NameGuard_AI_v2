@@ -157,6 +157,8 @@ class IndexedData:
         self.existing_companies: List[IndexedTerm] = []
         self.historical_decisions: List[IndexedTerm] = []
         self.existing_company_keys: Set[str] = set()
+        self.obscene_words: List[IndexedTerm] = []  # New: Obscene words list
+        self.political_names: List[IndexedTerm] = []  # New: Political leaders/parties
 
 # Global data instance
 DATA = IndexedData()
