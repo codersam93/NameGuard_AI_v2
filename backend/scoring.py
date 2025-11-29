@@ -650,16 +650,35 @@ def aggregate_score(name: str) -> Tuple[float, List[RuleFlag], List[str]]:
     score = score * uniq
     explanations.append(f"Distinguishability from existing names is estimated at {uniq * 100:.0f}%.")
 
-    # 2. Historical Rejection Penalty
-    hist_prob = historical_acceptance_from_phonetics(name)
-    if hist_prob is not None:
-        # If historical approval rate is low (< 50%), apply penalty
-        if hist_prob < 0.5:
-            score = min(score, 0.4)
-            explanations.append(f"Historical data indicates similar names have been rejected (Approval rate: {hist_prob * 100:.0f}%).")
+    # 2. ENHANCED Historical Analysis (Frequency + Recency Weighted)
+    hist_result = historical_acceptance_from_phonetics(name)
+    if hist_result is not None:
+        hist_prob, hist_meta = hist_result
+        freq = hist_meta.get("total_frequency", 0)
+        
+        # More nuanced historical penalty
+        if hist_prob < 0.3:
+            # Very low approval rate - severe penalty
+            score = min(score, 0.25)
+            explanations.append(f"Historical data shows {freq} similar name(s) with very low approval rate ({hist_prob * 100:.0f}%).")
+        elif hist_prob < 0.5:
+            # Moderate risk
+            score = min(score, 0.45)
+            explanations.append(f"Historical data shows {freq} similar name(s) with moderate rejection risk ({hist_prob * 100:.0f}% approval).")
+        elif hist_prob < 0.7:
+            # Slight concern
+            score = score * 0.85
+            explanations.append(f"Historical data shows {freq} similar name(s) with mixed outcomes ({hist_prob * 100:.0f}% approval).")
+        else:
+            # Positive signal
+            score = min(1.0, score * 1.1)
+            explanations.append(f"Historical data shows {freq} similar name(s) with good approval rate ({hist_prob * 100:.0f}%).")
         
     hard_severity = sum(f.severity for f in flags)
 
+    # Check for critical flags
+    has_obscene = any(f.code == "obscene_word_detected" for f in flags)
+    has_political = any(f.code == "political_reference_detected" for f in flags)
     has_high_offensive = any(f.code == "obscene_or_offensive" and f.severity >= 0.9 for f in flags)
     has_reserved = any(f.code == "prohibited_or_reserved_term" for f in flags)
     has_too_similar = any(f.code == "too_similar_existing_company" for f in flags)
@@ -670,6 +689,15 @@ def aggregate_score(name: str) -> Tuple[float, List[RuleFlag], List[str]]:
         base_penalty = min(0.7, 0.2 * hard_severity)
         score = max(0.0, score * (1.0 - base_penalty))
         explanations.append("MCA rule-based checks reduce the estimated approval probability.")
+
+    # CRITICAL REJECTIONS
+    if has_obscene:
+        score = 0.0
+        explanations.append("AUTOMATIC REJECTION: Contains obscene language.")
+
+    if has_political:
+        score = min(score, 0.15)
+        explanations.append("Contains political leader/party reference. Requires special government approval.")
 
     if has_high_offensive:
         score = min(score, 0.05)
