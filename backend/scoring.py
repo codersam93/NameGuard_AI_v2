@@ -554,10 +554,10 @@ def compute_hard_rule_flags(name: str) -> List[RuleFlag]:
             ))
             break
 
-    # 7) Phonetic match against offensive words (OLD LOGIC)
+    # 7) Phonetic match against offensive words (OLD LOGIC) - with stricter threshold
     has_offensive_flag = any(f.code == "obscene_or_offensive" for f in flags)
     if not has_offensive_flag:
-        matches = check_phonetic_match_any_token_optimized(name, DATA.offensive_words)
+        matches = check_phonetic_match_any_token_optimized(name, DATA.offensive_words, threshold=0.5)
         for item in matches:
             flags.append(RuleFlag(
                 code="obscene_or_offensive",
